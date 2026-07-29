@@ -1,0 +1,46 @@
+# E2E stack: the real sandbox image with a running sshd, exercised by a
+# test runner that generates a fresh keypair, hands the public key over via
+# a shared volume and then works through SSH exactly like a sandbox user.
+name: sandbox-base-e2e
+
+services:
+  sandbox:
+    image: mwaeckerlin/sandbox-base
+    build:
+      context: ../..
+    command:
+      - /bin/bash
+      - -c
+      - >
+        while [ ! -f /shared/authorized_keys ]; do sleep 1; done;
+        install -m 600 -o $${RUN_USER} -g $${RUN_GROUP}
+        /shared/authorized_keys $${RUN_HOME}/.ssh/authorized_keys;
+        exec /usr/sbin/sshd -D -e
+    volumes:
+      - shared:/shared
+
+  runner:
+    image: alpine
+    depends_on:
+      - sandbox
+    volumes:
+      - shared:/shared
+    command:
+      - /bin/sh
+      - -c
+      - >
+        apk add --no-cache openssh-client > /dev/null &&
+        ssh-keygen -t ed25519 -N '' -f /root/key -q &&
+        cp /root/key.pub /shared/authorized_keys &&
+        i=0; until ssh -i /root/key -o StrictHostKeyChecking=no
+        -o ConnectTimeout=2 somebody@sandbox true 2> /dev/null; do
+        i=$$((i+1)); if [ $$i -gt 45 ]; then echo SSH-TIMEOUT; exit 1; fi;
+        sleep 2; done;
+        ssh -i /root/key -o StrictHostKeyChecking=no somebody@sandbox
+        'set -e; test "$$(whoami)" = somebody; docker --version;
+        docker compose version; git --version; python3 --version;
+        node --version; gcc --version > /dev/null; pdflatex --version
+        > /dev/null; jq --version; echo SSH-E2E-OK'
+
+volumes:
+  shared:

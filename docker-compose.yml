@@ -1,0 +1,4 @@
+services:
+  sandbox-base:
+    image: mwaeckerlin/sandbox-base
+    build: .
