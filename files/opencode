@@ -1,0 +1,71 @@
+#!/bin/bash
+# OpenCode, configured from the environment on every call. With
+# OPENCODE_GATEWAY_URL set, the models of LiteLLM and the Hindsight memory
+# banks are reached through that gateway, which adds the keys; the sandbox holds
+# none, and the placeholder below is what OpenCode sends in their place.
+#
+#   OPENCODE_GATEWAY_URL    gateway that adds the keys, e.g. http://opencode-gateway:8080
+#   OPENCODE_MODELS         comma separated model names of LiteLLM, the first is the default
+#   HINDSIGHT_SHARED_BANK   memory bank shared by all agents, MCP server hindsight-shared
+#   HINDSIGHT_OWN_BANK      memory bank of this agent alone, MCP server hindsight-own
+#
+# Without OPENCODE_GATEWAY_URL, or with OPENCODE_CONFIG_CONTENT already set,
+# OpenCode runs with its own configuration. `opencode --print-config` prints the
+# configuration this script writes.
+set -euo pipefail
+
+OPENCODE=/usr/local/lib/opencode/opencode
+PLACEHOLDER="the-gateway-replaces-this"
+
+if [[ -n "${OPENCODE_GATEWAY_URL:-}" && -z "${OPENCODE_CONFIG_CONTENT:-}" ]]; then
+    GATEWAY="${OPENCODE_GATEWAY_URL%/}"
+    if [[ ! "${GATEWAY}" =~ ^https?://[^[:space:]/]+ ]]; then
+        echo "opencode: OPENCODE_GATEWAY_URL must be an http or https address, got «${GATEWAY}»" >&2
+        exit 1
+    fi
+    SHARED_BANK="${HINDSIGHT_SHARED_BANK:-}"
+    OWN_BANK="${HINDSIGHT_OWN_BANK:-}"
+    # a bank id becomes a path segment of the MCP address
+    for bank in "${SHARED_BANK}" "${OWN_BANK}"; do
+        if [[ -n "${bank}" && ! "${bank}" =~ ^[A-Za-z0-9_-]+$ ]]; then
+            echo "opencode: invalid bank id «${bank}»: letters, digits, _ and - only" >&2
+            exit 1
+        fi
+    done
+    MODELS="${OPENCODE_MODELS:-}"
+    MODELS_JSON=$(jq -cn --arg list "${MODELS}" \
+        '$list | split(",") | map(gsub("^\\s+|\\s+$"; "")) | map(select(length > 0)) | map({(.): {name: .}}) | add // {}')
+    DEFAULT_MODEL=$(jq -rn --arg list "${MODELS}" \
+        '$list | split(",") | map(gsub("^\\s+|\\s+$"; "")) | map(select(length > 0)) | .[0] // ""')
+    OPENCODE_CONFIG_CONTENT=$(jq -cn \
+        --arg gateway "${GATEWAY}" \
+        --arg placeholder "${PLACEHOLDER}" \
+        --arg shared "${SHARED_BANK}" \
+        --arg own "${OWN_BANK}" \
+        --arg model "${DEFAULT_MODEL}" \
+        --argjson models "${MODELS_JSON}" \
+        'def bank($bank): {type: "remote", url: ($gateway + "/mcp/" + $bank + "/"), enabled: true,
+                           headers: {Authorization: ("Bearer " + $placeholder)}};
+        {
+            "$schema": "https://opencode.ai/config.json",
+            autoupdate: false,
+            share: "disabled",
+            provider: {
+                litellm: {
+                    npm: "@ai-sdk/openai-compatible",
+                    name: "LiteLLM",
+                    options: {baseURL: ($gateway + "/v1"), apiKey: $placeholder},
+                    models: $models
+                }
+            },
+            mcp: ((if $shared == "" then {} else {"hindsight-shared": bank($shared)} end)
+                  + (if $own == "" then {} else {"hindsight-own": bank($own)} end))
+        } + (if $model == "" then {} else {model: ("litellm/" + $model)} end)')
+    export OPENCODE_CONFIG_CONTENT
+fi
+
+if [[ "${1:-}" == "--print-config" ]]; then
+    echo "${OPENCODE_CONFIG_CONTENT:-}"
+    exit 0
+fi
+exec "${OPENCODE}" "$@"

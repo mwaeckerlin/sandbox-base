@@ -16,8 +16,19 @@ ARG CONFIGURATION_COMMANDS=" \
   && install -m 700 -o \${RUN_USER} -g \${RUN_GROUP} /dev/null /etc/environment \
   "
 
+# one stage only: the ONBUILD steps of mwaeckerlin/ubuntu-base, which install
+# PACKAGES and run CONFIGURATION_COMMANDS, took effect in the first of two
+# stages built on it and not in the second, the one that is published
 FROM mwaeckerlin/ubuntu-base
+ARG TARGETARCH
 ENV CONTAINERNAME="sandbox"
+# OpenCode, the coding agent, runs in the sandbox on the checkout and the
+# toolset of the agent; it never updates itself and downloads nothing, because
+# a sandbox reaches no internet
+ENV OPENCODE_DISABLE_AUTOUPDATE="true" \
+    OPENCODE_DISABLE_MODELS_FETCH="true" \
+    OPENCODE_DISABLE_LSP_DOWNLOAD="true" \
+    OPENCODE_DISABLE_CLAUDE_CODE="true"
 ENV PACKAGES_DEV=" \
   lsb-release bash coreutils findutils grep sed gawk diffutils patch file tree \
   git git-lfs gh \
@@ -82,6 +93,18 @@ RUN ( \
   echo ${PACKAGES_DB} | tr ' ' '\n' \
   ) > /etc/installed-ubuntu-packages
 RUN install -d -m 700 -o ${RUN_USER} -g ${RUN_GROUP} ${RUN_HOME}/.ssh
+# the newest release of OpenCode, for the architecture of the build, behind the
+# command that writes its configuration from the environment
+RUN case "${TARGETARCH:-$(dpkg --print-architecture)}" in \
+      amd64) ARCH=x64 ;; \
+      arm64) ARCH=arm64 ;; \
+      *) echo "unsupported architecture ${TARGETARCH}" >&2; exit 1 ;; \
+    esac \
+    && install -d /usr/local/lib/opencode \
+    && curl -fsSL "https://github.com/anomalyco/opencode/releases/latest/download/opencode-linux-${ARCH}.tar.gz" \
+       | tar -xz -C /usr/local/lib/opencode opencode \
+    && /usr/local/lib/opencode/opencode --version
+COPY --chmod=0755 files/opencode /usr/local/bin/opencode
 EXPOSE 22
 HEALTHCHECK --interval=30s --timeout=10s --start-period=20s --retries=60 \
   CMD nc -z localhost 22 || exit 1

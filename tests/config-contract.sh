@@ -52,6 +52,32 @@ else
     _check compose_plugin 'docker compose version'              "compose plugin missing"
     _check docker_group   'id -nG somebody | grep -qw docker'   "runtime user not in docker group"
 
+    # OpenCode (F6): the binary of the build's architecture behind the wrapper,
+    # which writes the configuration from the environment and puts no key in it
+    _check opencode_runs  'opencode --version'                  "opencode missing or not runnable"
+    _check opencode_no_update 'test "${OPENCODE_DISABLE_AUTOUPDATE}" = true && test "${OPENCODE_DISABLE_MODELS_FETCH}" = true' "automatic update or model download not switched off"
+    _check opencode_config_through_gateway \
+        'c=$(OPENCODE_GATEWAY_URL=http://gw:8080 OPENCODE_MODELS="m1, m2" HINDSIGHT_SHARED_BANK=shared HINDSIGHT_OWN_BANK=agent opencode --print-config)
+         test "$(jq -r .provider.litellm.options.baseURL <<< "$c")" = http://gw:8080/v1 &&
+         test "$(jq -r .model <<< "$c")" = litellm/m1 &&
+         test "$(jq -r ".provider.litellm.models | keys | join(\",\")" <<< "$c")" = m1,m2 &&
+         test "$(jq -r ".mcp[\"hindsight-shared\"].url" <<< "$c")" = http://gw:8080/mcp/shared/ &&
+         test "$(jq -r ".mcp[\"hindsight-own\"].url" <<< "$c")" = http://gw:8080/mcp/agent/ &&
+         test "$(jq -r .provider.litellm.options.apiKey <<< "$c")" = the-gateway-replaces-this' \
+        "configuration from the environment is wrong"
+    _check opencode_no_memory_without_banks \
+        'test "$(OPENCODE_GATEWAY_URL=http://gw:8080 opencode --print-config | jq -c .mcp)" = "{}"' \
+        "memory banks configured although none is named"
+    _check opencode_without_gateway_own_config \
+        'test -z "$(env -u OPENCODE_GATEWAY_URL opencode --print-config)"' \
+        "a configuration is written without a gateway"
+    _check opencode_invalid_bank_refused \
+        '! OPENCODE_GATEWAY_URL=http://gw:8080 HINDSIGHT_OWN_BANK=../v1 opencode --print-config && OPENCODE_GATEWAY_URL=http://gw:8080 HINDSIGHT_OWN_BANK=../v1 opencode --print-config 2>&1 | grep -q "invalid bank id"' \
+        "a bank id that changes the MCP path is accepted"
+    _check opencode_invalid_gateway_refused \
+        '! OPENCODE_GATEWAY_URL="file:///etc" opencode --print-config' \
+        "a gateway that is no http address is accepted"
+
     # drop-in base (F4)
     _check environment_file 'test "$(stat -c "%a %U" /etc/environment)" = "700 somebody"' "/etc/environment not prepared"
     PORTS=$(docker image inspect --format '{{.Config.ExposedPorts}}' "${IMAGE}" 2>&1)

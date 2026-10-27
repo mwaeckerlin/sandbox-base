@@ -1,6 +1,8 @@
 # E2E stack: the real sandbox image with a running sshd, exercised by a
 # test runner that generates a fresh keypair, hands the public key over via
 # a shared volume and then works through SSH exactly like a sandbox user.
+# A real LiteLLM with a mock model answers OpenCode, which reaches it the way
+# it reaches the gateway of an agent.
 name: sandbox-base-e2e
 
 services:
@@ -19,10 +21,24 @@ services:
     volumes:
       - shared:/shared
 
+  litellm:
+    image: ghcr.io/berriai/litellm:main-latest
+    command: ["--config", "/etc/litellm.yaml", "--port", "4000"]
+    # LiteLLM refuses to start without a master key since October 2026. OpenCode
+    # sends the placeholder key that the gateway of an agent replaces, and this
+    # stack has no gateway: the mock answers on the internal network of the test
+    # alone, so the start without a key is permitted here and nowhere else
+    environment:
+      LITELLM_DANGEROUSLY_PERMIT_WEAK_OR_UNSET_MASTER_KEY: "true"
+    configs:
+      - source: litellm
+        target: /etc/litellm.yaml
+
   runner:
     image: alpine
     depends_on:
       - sandbox
+      - litellm
     volumes:
       - shared:/shared
     command:
@@ -40,7 +56,23 @@ services:
         'set -e; test "$$(whoami)" = somebody; docker --version;
         docker compose version; git --version; python3 --version;
         node --version; gcc --version > /dev/null; pdflatex --version
-        > /dev/null; jq --version; echo SSH-E2E-OK'
+        > /dev/null; jq --version; echo SSH-E2E-OK' &&
+        ssh -i /root/key -o StrictHostKeyChecking=no somebody@sandbox
+        'set -e; i=0; until curl -fsS -o /dev/null http://litellm:4000/health/readiness;
+        do i=$$((i+1)); test $$i -lt 60; sleep 3; done;
+        mkdir -p checkout; cd checkout;
+        OPENCODE_GATEWAY_URL=http://litellm:4000 OPENCODE_MODELS=test-model
+        opencode run "Say hello" 2>&1'
+
+configs:
+  litellm:
+    content: |
+      model_list:
+        - model_name: test-model
+          litellm_params:
+            model: openai/test-model
+            api_key: not-used-by-the-mock
+            mock_response: "Hello from the mock LiteLLM of the sandbox-base test stack."
 
 volumes:
   shared:

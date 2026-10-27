@@ -1,5 +1,8 @@
 # Changelog
 
+- 2026-10-27 **1.0.2**
+    - The sandbox carries OpenCode, the coding agent, as `opencode`; with `OPENCODE_GATEWAY_URL` it reaches the models of LiteLLM and the Hindsight memory banks through a gateway that adds the keys, so the agent works on its own checkout without a key in the sandbox
+
 - 2026-09-26 **1.0.1**
     - The image is published for amd64 and arm64 under one tag, built, tested and published automatically on every change and every week
 
