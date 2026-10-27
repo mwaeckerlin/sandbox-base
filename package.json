@@ -1,6 +1,6 @@
 {
   "name": "@mwaeckerlin/sandbox-base",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "scripts": {
     "build": "docker compose build",
     "deploy": "docker compose push",

@@ -31,6 +31,7 @@ The image carries [OpenCode], the coding agent, as the command `opencode`. It wo
 | --- | --- |
 | `OPENCODE_GATEWAY_URL` | Gateway that adds the keys on the way to LiteLLM and Hindsight, such as an instance of `mwaeckerlin/opencode:gateway`; without it OpenCode runs with its own configuration |
 | `OPENCODE_MODELS` | Comma separated model names of LiteLLM; the first is the default |
+| `OPENCODE_SMALL_MODEL` | Model name of LiteLLM for small tasks such as session titles; empty leaves the choice to OpenCode |
 | `HINDSIGHT_SHARED_BANK` | Memory bank shared by all agents, MCP server `hindsight-shared`; empty: none |
 | `HINDSIGHT_OWN_BANK` | Memory bank of this agent alone, MCP server `hindsight-own`; empty: none |
 

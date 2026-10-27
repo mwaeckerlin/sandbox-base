@@ -1,5 +1,8 @@
 # Changelog
 
+- 2026-10-27 **1.0.3**
+    - New: `OPENCODE_SMALL_MODEL` names the model of LiteLLM that OpenCode uses for small tasks such as session titles; without it OpenCode chooses as before
+
 - 2026-10-27 **1.0.2**
     - The sandbox carries OpenCode, the coding agent, as `opencode`; with `OPENCODE_GATEWAY_URL` it reaches the models of LiteLLM and the Hindsight memory banks through a gateway that adds the keys, so the agent works on its own checkout without a key in the sandbox
 

@@ -65,6 +65,15 @@ else
          test "$(jq -r ".mcp[\"hindsight-own\"].url" <<< "$c")" = http://gw:8080/mcp/agent/ &&
          test "$(jq -r .provider.litellm.options.apiKey <<< "$c")" = the-gateway-replaces-this' \
         "configuration from the environment is wrong"
+    _check opencode_small_model \
+        'c=$(OPENCODE_GATEWAY_URL=http://gw:8080 OPENCODE_MODELS="m1, m2" OPENCODE_SMALL_MODEL=" s1 " opencode --print-config)
+         test "$(jq -r .small_model <<< "$c")" = litellm/s1 &&
+         test "$(jq -r ".provider.litellm.models | keys | join(\",\")" <<< "$c")" = m1,m2,s1 &&
+         test "$(jq -r .model <<< "$c")" = litellm/m1' \
+        "the small model is not configured"
+    _check opencode_no_small_model_by_default \
+        'test "$(OPENCODE_GATEWAY_URL=http://gw:8080 OPENCODE_MODELS=m1 opencode --print-config | jq -r "has(\"small_model\")")" = false' \
+        "a small model is configured although none is named"
     _check opencode_no_memory_without_banks \
         'test "$(OPENCODE_GATEWAY_URL=http://gw:8080 opencode --print-config | jq -c .mcp)" = "{}"' \
         "memory banks configured although none is named"
