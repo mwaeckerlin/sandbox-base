@@ -62,7 +62,10 @@ services:
         do i=$$((i+1)); test $$i -lt 60; sleep 3; done;
         mkdir -p checkout; cd checkout;
         OPENCODE_GATEWAY_URL=http://litellm:4000 OPENCODE_MODELS=test-model
-        opencode run "Say hello" 2>&1'
+        opencode run "Say hello" 2>&1' &&
+        ssh -i /root/key -o StrictHostKeyChecking=no somebody@sandbox
+        'OPENCODE_GATEWAY_URL=http://litellm:4000 OPENCODE_MODELS=test-model
+        opencode models 2>&1 | sed "s/^/MODEL /"'
 
 configs:
   litellm:

@@ -1,10 +1,10 @@
 {
   "name": "@mwaeckerlin/sandbox-base",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "scripts": {
     "build": "docker compose build",
     "deploy": "docker compose push",
-    "test": "npm run test:docs && npm run test:contract && npm run test:e2e",
+    "test": "bash tests/run-all.sh",
     "test:docs": "bash tests/docs-contract.sh",
     "test:contract": "npm run build && bash tests/config-contract.sh mwaeckerlin/sandbox-base",
     "test:e2e": "bash tests/run-e2e.sh"

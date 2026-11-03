@@ -2,13 +2,19 @@
 # OpenCode, configured from the environment on every call. With
 # OPENCODE_GATEWAY_URL set, the models of LiteLLM and the Hindsight memory
 # banks are reached through that gateway, which adds the keys; the sandbox holds
-# none, and the placeholder below is what OpenCode sends in their place.
+# none, and the placeholder below is what OpenCode sends in their place. LiteLLM
+# is the only provider then, so no model of OpenCode itself, such as those of
+# OpenCode Zen, is offered and no model call goes past the gateway.
 #
 #   OPENCODE_GATEWAY_URL    gateway that adds the keys, e.g. http://opencode-gateway:8080
 #   OPENCODE_MODELS         comma separated model names of LiteLLM, the first is the default
 #   OPENCODE_SMALL_MODEL    model name of LiteLLM for small tasks such as session titles
 #   HINDSIGHT_SHARED_BANK   memory bank shared by all agents, MCP server hindsight-shared
 #   HINDSIGHT_OWN_BANK      memory bank of this agent alone, MCP server hindsight-own
+#   OPENCODE_GATEWAY_MCP_SERVERS
+#                           comma separated MCP servers of the forges the gateway
+#                           forwards: github, gitea, gitlab, each the MCP server
+#                           of that name at <gateway>/mcp/<name>
 #
 # Without OPENCODE_GATEWAY_URL, or with OPENCODE_CONFIG_CONTENT already set,
 # OpenCode runs with its own configuration. `opencode --print-config` prints the
@@ -26,13 +32,26 @@ if [[ -n "${OPENCODE_GATEWAY_URL:-}" && -z "${OPENCODE_CONFIG_CONTENT:-}" ]]; th
     fi
     SHARED_BANK="${HINDSIGHT_SHARED_BANK:-}"
     OWN_BANK="${HINDSIGHT_OWN_BANK:-}"
-    # a bank id becomes a path segment of the MCP address
+    # a bank id becomes a path segment of the MCP address; the gateway
+    # forwards /mcp/github, /mcp/gitea and /mcp/gitlab to the forges instead
     for bank in "${SHARED_BANK}" "${OWN_BANK}"; do
         if [[ -n "${bank}" && ! "${bank}" =~ ^[A-Za-z0-9_-]+$ ]]; then
             echo "opencode: invalid bank id «${bank}»: letters, digits, _ and - only" >&2
             exit 1
         fi
+        case "${bank}" in
+            github|gitea|gitlab)
+                echo "opencode: invalid bank id «${bank}»: the gateway forwards /mcp/${bank} to the MCP server ${bank}" >&2
+                exit 1 ;;
+        esac
     done
+    GATEWAY_MCP_JSON=$(jq -cn --arg list "${OPENCODE_GATEWAY_MCP_SERVERS:-}" \
+        '$list | split(",") | map(gsub("^\\s+|\\s+$"; "")) | map(select(length > 0)) | unique')
+    UNKNOWN=$(jq -r 'map(select(IN("github", "gitea", "gitlab") | not)) | first // empty' <<< "${GATEWAY_MCP_JSON}")
+    if [[ -n "${UNKNOWN}" ]]; then
+        echo "opencode: unknown MCP server «${UNKNOWN}» in OPENCODE_GATEWAY_MCP_SERVERS: github, gitea and gitlab only" >&2
+        exit 1
+    fi
     SMALL_MODEL=$(jq -rn --arg name "${OPENCODE_SMALL_MODEL:-}" '$name | gsub("^\\s+|\\s+$"; "")')
     # the small model is one of the models of the provider as well
     MODELS="${OPENCODE_MODELS:-},${SMALL_MODEL}"
@@ -48,12 +67,15 @@ if [[ -n "${OPENCODE_GATEWAY_URL:-}" && -z "${OPENCODE_CONFIG_CONTENT:-}" ]]; th
         --arg model "${DEFAULT_MODEL}" \
         --arg small "${SMALL_MODEL}" \
         --argjson models "${MODELS_JSON}" \
-        'def bank($bank): {type: "remote", url: ($gateway + "/mcp/" + $bank + "/"), enabled: true,
-                           headers: {Authorization: ("Bearer " + $placeholder)}};
+        --argjson forges "${GATEWAY_MCP_JSON}" \
+        'def remote($url): {type: "remote", url: $url, enabled: true,
+                            headers: {Authorization: ("Bearer " + $placeholder)}};
+        def bank($bank): remote($gateway + "/mcp/" + $bank + "/");
         {
             "$schema": "https://opencode.ai/config.json",
             autoupdate: false,
             share: "disabled",
+            enabled_providers: ["litellm"],
             provider: {
                 litellm: {
                     npm: "@ai-sdk/openai-compatible",
@@ -63,7 +85,8 @@ if [[ -n "${OPENCODE_GATEWAY_URL:-}" && -z "${OPENCODE_CONFIG_CONTENT:-}" ]]; th
                 }
             },
             mcp: ((if $shared == "" then {} else {"hindsight-shared": bank($shared)} end)
-                  + (if $own == "" then {} else {"hindsight-own": bank($own)} end))
+                  + (if $own == "" then {} else {"hindsight-own": bank($own)} end)
+                  + ($forges | map({(.): remote($gateway + "/mcp/" + .)}) | add // {}))
         } + (if $model == "" then {} else {model: ("litellm/" + $model)} end)
           + (if $small == "" then {} else {small_model: ("litellm/" + $small)} end)')
     export OPENCODE_CONFIG_CONTENT

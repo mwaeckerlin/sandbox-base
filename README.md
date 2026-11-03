@@ -33,9 +33,10 @@ The image carries [OpenCode], the coding agent, as the command `opencode`. It wo
 | `OPENCODE_MODELS` | Comma separated model names of LiteLLM; the first is the default |
 | `OPENCODE_SMALL_MODEL` | Model name of LiteLLM for small tasks such as session titles; empty leaves the choice to OpenCode |
 | `HINDSIGHT_SHARED_BANK` | Memory bank shared by all agents, MCP server `hindsight-shared`; empty: none |
-| `HINDSIGHT_OWN_BANK` | Memory bank of this agent alone, MCP server `hindsight-own`; empty: none |
+| `HINDSIGHT_OWN_BANK` | Memory bank of this agent alone, MCP server `hindsight-own`; empty: none. `github`, `gitea` and `gitlab` stop the start, because the gateway forwards these paths to the forges |
+| `OPENCODE_GATEWAY_MCP_SERVERS` | Comma separated MCP servers of the forges that the gateway forwards, any of `github`, `gitea` and `gitlab`; each becomes the MCP server of that name at `<gateway>/mcp/<name>`; empty: none. Another name stops the start |
 
-OpenCode sends a placeholder in place of every key, and the gateway replaces it, so the sandbox holds no key. `opencode --print-config` prints the configuration. A derived image publishes these variables to `/etc/environment`, so that they reach the SSH session. OpenCode never updates itself and downloads no model list and no language server, because a sandbox reaches no internet; a new release of OpenCode arrives with the next build of this image.
+OpenCode sends a placeholder in place of every key and token, and the gateway replaces it, so the sandbox holds none. With the gateway, LiteLLM is the only provider (`enabled_providers`), so OpenCode offers none of its own models, such as those of OpenCode Zen, whose calls would leave the sandbox past the gateway. `opencode --print-config` prints the configuration. A derived image publishes these variables to `/etc/environment`, so that they reach the SSH session. OpenCode never updates itself and downloads no model list and no language server, because a sandbox reaches no internet; a new release of OpenCode arrives with the next build of this image.
 
 ## Security Trade-Offs
 
@@ -48,7 +49,15 @@ OpenCode sends a placeholder in place of every key, and the gateway replaces it,
 
 `npm test` runs the docs contract (every feature in [FEATURES.md](FEATURES.md) has a test in [TESTS.md](TESTS.md), no skipped tests), the config contract (toolset spot checks, effective sshd hardening, docker client, OpenCode and its configuration, drop-in contract) and an end to end test that starts the real sshd, logs in with a freshly generated key, executes the toolchain through the SSH session and lets OpenCode answer a prompt through a real LiteLLM with a mock model:
 
-    npm test            # docs + config contract + SSH e2e
+```bash
+npm test
+```
+
+A red group does not stop the groups after it. `npm test -- --list` prints the groups in their order (`docs`, `contract`, `e2e`), and `npm test -- --from <group> --to <group>` runs a part of them, both named groups included, such as the rest of a run that was interrupted:
+
+```bash
+npm test -- --from contract
+```
 
 [mwaeckerlin/sandbox-base]: https://hub.docker.com/r/mwaeckerlin/sandbox-base "get the image from docker hub"
 [mwaeckerlin/hermes]: https://github.com/mwaeckerlin/hermes

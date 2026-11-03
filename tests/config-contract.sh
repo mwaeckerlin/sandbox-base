@@ -65,6 +65,9 @@ else
          test "$(jq -r ".mcp[\"hindsight-own\"].url" <<< "$c")" = http://gw:8080/mcp/agent/ &&
          test "$(jq -r .provider.litellm.options.apiKey <<< "$c")" = the-gateway-replaces-this' \
         "configuration from the environment is wrong"
+    _check opencode_litellm_the_only_provider \
+        'test "$(OPENCODE_GATEWAY_URL=http://gw:8080 OPENCODE_MODELS=m1 opencode --print-config | jq -c .enabled_providers)" = "[\"litellm\"]"' \
+        "providers other than LiteLLM, such as OpenCode Zen, stay enabled"
     _check opencode_small_model \
         'c=$(OPENCODE_GATEWAY_URL=http://gw:8080 OPENCODE_MODELS="m1, m2" OPENCODE_SMALL_MODEL=" s1 " opencode --print-config)
          test "$(jq -r .small_model <<< "$c")" = litellm/s1 &&
@@ -83,6 +86,33 @@ else
     _check opencode_invalid_bank_refused \
         '! OPENCODE_GATEWAY_URL=http://gw:8080 HINDSIGHT_OWN_BANK=../v1 opencode --print-config && OPENCODE_GATEWAY_URL=http://gw:8080 HINDSIGHT_OWN_BANK=../v1 opencode --print-config 2>&1 | grep -q "invalid bank id"' \
         "a bank id that changes the MCP path is accepted"
+    # the MCP servers of GitHub, Gitea and GitLab, through the gateway (F7)
+    _check opencode_gateway_mcp_servers \
+        'c=$(OPENCODE_GATEWAY_URL=http://gw:8080 HINDSIGHT_SHARED_BANK=shared OPENCODE_GATEWAY_MCP_SERVERS=" gitea, github,gitea," opencode --print-config)
+         test "$(jq -r ".mcp | keys | join(\",\")" <<< "$c")" = gitea,github,hindsight-shared &&
+         test "$(jq -r ".mcp.github.url" <<< "$c")" = http://gw:8080/mcp/github &&
+         test "$(jq -r ".mcp.gitea.url" <<< "$c")" = http://gw:8080/mcp/gitea &&
+         test "$(jq -r ".mcp.github.type" <<< "$c")" = remote &&
+         test "$(jq -r ".mcp.github.headers.Authorization" <<< "$c")" = "Bearer the-gateway-replaces-this"' \
+        "the MCP servers of the forges are not configured through the gateway"
+    _check opencode_gateway_mcp_gitlab_alone \
+        'test "$(OPENCODE_GATEWAY_URL=http://gw:8080 OPENCODE_GATEWAY_MCP_SERVERS=gitlab opencode --print-config | jq -c ".mcp | keys")" = "[\"gitlab\"]"' \
+        "GitLab alone is not configured as the one MCP server"
+    _check opencode_no_gateway_mcp_by_default \
+        'test "$(OPENCODE_GATEWAY_URL=http://gw:8080 HINDSIGHT_OWN_BANK=own opencode --print-config | jq -c ".mcp | keys")" = "[\"hindsight-own\"]"' \
+        "an MCP server of a forge is configured although none is named"
+    _check opencode_unknown_gateway_mcp_refused \
+        'for value in github,bitbucket "github gitea" "*" GitHub; do
+             ! OPENCODE_GATEWAY_URL=http://gw:8080 OPENCODE_GATEWAY_MCP_SERVERS="${value}" opencode --print-config || exit 1
+             OPENCODE_GATEWAY_URL=http://gw:8080 OPENCODE_GATEWAY_MCP_SERVERS="${value}" opencode --print-config 2>&1 | grep -qF "unknown MCP server «${value##*,}» in OPENCODE_GATEWAY_MCP_SERVERS" || exit 1
+         done' \
+        "an MCP server other than github, gitea or gitlab is accepted"
+    _check opencode_bank_named_like_a_forge_refused \
+        'for bank in github gitea gitlab; do
+             ! OPENCODE_GATEWAY_URL=http://gw:8080 HINDSIGHT_OWN_BANK="${bank}" opencode --print-config || exit 1
+             OPENCODE_GATEWAY_URL=http://gw:8080 HINDSIGHT_SHARED_BANK="${bank}" opencode --print-config 2>&1 | grep -q "invalid bank id «${bank}»" || exit 1
+         done' \
+        "a bank id that names the MCP server of a forge is accepted"
     _check opencode_invalid_gateway_refused \
         '! OPENCODE_GATEWAY_URL="file:///etc" opencode --print-config' \
         "a gateway that is no http address is accepted"

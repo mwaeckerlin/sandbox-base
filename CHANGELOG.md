@@ -1,5 +1,10 @@
 # Changelog
 
+- 2026-11-03 **1.0.4**
+    - Fix: with the gateway, OpenCode offers the models of LiteLLM alone; the models of OpenCode Zen no longer stand in the model list, and no model call leaves the sandbox past the gateway
+    - New: `OPENCODE_GATEWAY_MCP_SERVERS` connects OpenCode with the MCP servers of GitHub, Gitea and GitLab through the gateway, which holds their tokens; a memory bank can no longer be called `github`, `gitea` or `gitlab`
+    - Tests: a red test group no longer stops the groups after it, and `npm test -- --from <group> --to <group>` runs a part of them
+
 - 2026-10-27 **1.0.3**
     - New: `OPENCODE_SMALL_MODEL` names the model of LiteLLM that OpenCode uses for small tasks such as session titles; without it OpenCode chooses as before
 
